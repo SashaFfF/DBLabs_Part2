@@ -17,6 +17,7 @@ CREATE TABLE STUDENTS
 );
 
 --task2
+--unique id
 CREATE OR REPLACE TRIGGER check_unique_group_id
 BEFORE INSERT OR UPDATE ON GROUPS
 FOR EACH ROW
@@ -51,3 +52,58 @@ END;
 
 insert into groups(id, name, c_val) values(1, 'group1', 20);
 insert into students(id, name, group_id) values(1, 'student1', 1);
+
+ALTER TRIGGER GENERATE_AUTO_INCREMENT_STUDENTS DISABLE;
+insert into students(id, name, group_id) values(2, 'student1', 1);
+ALTER TRIGGER GENERATE_AUTO_INCREMENT_STUDENTS ENABLE;
+
+
+
+--autoincrement
+CREATE OR REPLACE TRIGGER GENERATE_AUTO_INCREMENT_GROUPS
+BEFORE INSERT ON GROUPS
+FOR EACH ROW
+BEGIN
+--Oracle/PLSQL функция COALESCE возвращает первое ненулевое выражение из списка
+  SELECT COALESCE(MAX(ID), 0) + 1
+  INTO :NEW.ID
+  FROM GROUPS;
+END;
+
+CREATE OR REPLACE TRIGGER GENERATE_AUTO_INCREMENT_STUDENTS
+BEFORE INSERT ON STUDENTS
+FOR EACH ROW
+BEGIN
+--Oracle/PLSQL функция COALESCE возвращает первое ненулевое выражение из списка
+  SELECT COALESCE(MAX(ID), 0) + 1
+  INTO :NEW.ID
+  FROM STUDENTS;
+END;
+
+insert into students(name, group_id) values('student', 1);
+SELECT * FROM STUDENTS;
+insert into groups(name, c_val) values('group', 30);
+select * from groups;
+
+
+
+--unique group.name
+CREATE OR REPLACE TRIGGER check_unique_group_name
+BEFORE INSERT OR UPDATE ON GROUPS
+FOR EACH ROW
+DECLARE
+  count_name NUMBER;
+BEGIN
+    SELECT COUNT(*)
+    INTO count_name
+    FROM GROUPS
+    WHERE NAME = :NEW.NAME;
+    
+    IF(count_name!=0) THEN 
+      RAISE_APPLICATION_ERROR(-20003, 'Ошибка: Поле NAME в таблице GROUPS должно быть уникальным.');
+    END IF;
+END;
+
+insert into groups(name, c_val) values('group', 30);
+
+
