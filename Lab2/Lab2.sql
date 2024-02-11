@@ -182,7 +182,7 @@ CREATE OR REPLACE PROCEDURE restore_students_info (
 ) IS
 BEGIN
     IF date_time IS NOT NULL THEN --все записи на конкретную дату и время 
-        FOR action_info IN (SELECT * FROM log_students WHERE TRUNC(datetime) = TRUNC(date_time)) --TRUNC для обрезания миллисекунд и других меньших единиц времени
+        FOR action_info IN (SELECT * FROM log_students WHERE TRUNC(datetime, 'MI') = TRUNC(date_time, 'MI')) --TRUNC для обрезания миллисекунд и других меньших единиц времени
         LOOP
             dbms_output.put_line('Action: ' || action_info.action);
             dbms_output.put_line('Datetime: ' || to_char(action_info.datetime, 'YYYY-MM-DD HH24:MI:SS'));
@@ -210,3 +210,7 @@ execute dbms_output.put_line('----------- NEW-(3 hours)----------------');
 execute restore_students_info(NULL, INTERVAL '3' HOUR);
 execute dbms_output.put_line('----------- NEW-(2 days)----------------');
 execute restore_students_info(NULL, INTERVAL '2' DAY);
+
+
+
+
