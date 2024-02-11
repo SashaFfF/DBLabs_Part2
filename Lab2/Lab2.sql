@@ -156,3 +156,57 @@ END;
 
 --можно для проверки использовать проверку из task3
 select * from log_students;
+
+
+--task5
+--CREATE OR REPLACE PROCEDURE restore_students_info (
+--    date_time   IN TIMESTAMP,
+--    time_offset IN INTERVAL DAY TO SECOND
+--) IS
+--BEGIN
+--    IF date_time IS NOT NULL THEN --все записи на конкретную дату и время 
+--        SELECT * 
+--        FROM log_students
+--        WHERE datetime = date_time;
+--    ELSIF time_offset IS NOT NULL THEN --все записи в рамках этого смещения времени
+--        SELECT *
+--        FROM log_students
+--        WHERE datetime >= SYSTIMESTAMP - time_offset;
+--    END IF;
+--END;
+
+
+CREATE OR REPLACE PROCEDURE restore_students_info (
+    date_time   IN TIMESTAMP,
+    time_offset IN INTERVAL DAY TO SECOND
+) IS
+BEGIN
+    IF date_time IS NOT NULL THEN --все записи на конкретную дату и время 
+        FOR action_info IN (SELECT * FROM log_students WHERE TRUNC(datetime) = TRUNC(date_time)) --TRUNC для обрезания миллисекунд и других меньших единиц времени
+        LOOP
+            dbms_output.put_line('Action: ' || action_info.action);
+            dbms_output.put_line('Datetime: ' || to_char(action_info.datetime, 'YYYY-MM-DD HH24:MI:SS'));
+            dbms_output.put_line('Student ID: ' || action_info.student_id);
+            dbms_output.put_line('Name: ' || action_info.NAME);
+            dbms_output.put_line('Group ID: ' || action_info.GROUP_ID);
+            dbms_output.put_line('---------------------------');
+        END LOOP;
+    ELSIF time_offset IS NOT NULL THEN --все записи в рамках этого смещения времени
+        FOR action_info IN (SELECT * FROM log_students WHERE datetime >= systimestamp - time_offset)
+        LOOP
+            dbms_output.put_line('Action: ' || action_info.action);
+            dbms_output.put_line('Datetime: ' || to_char(action_info.datetime, 'YYYY-MM-DD HH24:MI:SS'));
+            dbms_output.put_line('Student ID: ' || action_info.student_id);
+            dbms_output.put_line('Name: ' || action_info.NAME);
+            dbms_output.put_line('Group ID: ' || action_info.GROUP_ID);
+            dbms_output.put_line('---------------------------');
+        END LOOP;
+    END IF;
+END;
+
+execute dbms_output.put_line('----------- NEW-(date_time: 2024-02-11 13:08:24)----------------');
+execute restore_students_info(TO_TIMESTAMP('2024-02-11 13:08:24', 'YYYY-MM-DD HH24:MI:SS'), NULL);
+execute dbms_output.put_line('----------- NEW-(3 hours)----------------');
+execute restore_students_info(NULL, INTERVAL '3' HOUR);
+execute dbms_output.put_line('----------- NEW-(2 days)----------------');
+execute restore_students_info(NULL, INTERVAL '2' DAY);
