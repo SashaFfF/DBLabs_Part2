@@ -53,9 +53,16 @@ END;
 insert into groups(id, name, c_val) values(1, 'group1', 20);
 insert into students(id, name, group_id) values(1, 'student1', 1);
 
+--Test
+select * from students;
 ALTER TRIGGER GENERATE_AUTO_INCREMENT_STUDENTS DISABLE;
 insert into students(id, name, group_id) values(2, 'student1', 1);
 ALTER TRIGGER GENERATE_AUTO_INCREMENT_STUDENTS ENABLE;
+
+select * from groups;
+alter trigger GENERATE_AUTO_INCREMENT_GROUPS disable;
+insert into groups(id, name, c_val) values(1, 'group_lkfdjkjd', 20);
+alter trigger GENERATE_AUTO_INCREMENT_GROUPS enable;
 
 
 
@@ -80,10 +87,14 @@ BEGIN
   FROM STUDENTS;
 END;
 
-insert into students(name, group_id) values('student', 1);
+--Test
+insert into students(name, group_id) values('student_test', 1);
 SELECT * FROM STUDENTS;
-insert into groups(name, c_val) values('group', 30);
+delete from students where name = 'student_test';
+
+insert into groups(name, c_val) values('group_test', 30);
 select * from groups;
+delete from groups where name = 'group_test';
 
 
 
@@ -104,8 +115,8 @@ BEGIN
     END IF;
 END;
 
+--Test
 insert into groups(name, c_val) values('group', 30);
-
 
 
 --task3
@@ -117,12 +128,15 @@ BEGIN
     WHERE GROUP_ID = :OLD.ID;
 END;
 
+--Test
 INSERT INTO GROUPS(NAME, C_VAL) VALUES('group_check_cascade', 35);
 SELECT * FROM GROUPS;
 INSERT INTO STUDENTS(NAME, GROUP_ID) VALUES('st_check_cascade', (select id from groups where name = 'group_check_cascade'));
 SELECT * FROM STUDENTS;
 DELETE FROM GROUPS WHERE Name = 'group_check_cascade';
 
+SELECT * FROM GROUPS;
+SELECT * FROM STUDENTS;
 
 
 --task4
@@ -159,23 +173,7 @@ select * from log_students;
 
 
 --task5
---CREATE OR REPLACE PROCEDURE restore_students_info (
---    date_time   IN TIMESTAMP,
---    time_offset IN INTERVAL DAY TO SECOND
---) IS
---BEGIN
---    IF date_time IS NOT NULL THEN --все записи на конкретную дату и время 
---        SELECT * 
---        FROM log_students
---        WHERE datetime = date_time;
---    ELSIF time_offset IS NOT NULL THEN --все записи в рамках этого смещения времени
---        SELECT *
---        FROM log_students
---        WHERE datetime >= SYSTIMESTAMP - time_offset;
---    END IF;
---END;
-
-
+--ATTEMPT 1
 CREATE OR REPLACE PROCEDURE restore_students_info (
     date_time   IN TIMESTAMP,
     time_offset IN INTERVAL DAY TO SECOND
@@ -208,9 +206,116 @@ execute dbms_output.put_line('----------- NEW-(date_time: 2024-02-11 13:08:24)--
 execute restore_students_info(TO_TIMESTAMP('2024-02-11 13:08:24', 'YYYY-MM-DD HH24:MI:SS'), NULL);
 execute dbms_output.put_line('----------- NEW-(3 hours)----------------');
 execute restore_students_info(NULL, INTERVAL '3' HOUR);
-execute dbms_output.put_line('----------- NEW-(2 days)----------------');
-execute restore_students_info(NULL, INTERVAL '2' DAY);
+execute dbms_output.put_line('----------- NEW-(3 days)----------------');
+execute restore_students_info(NULL, INTERVAL '3' DAY);
 
 
+--ATTEMPT 2
+CREATE OR REPLACE PROCEDURE restore_students_info_v2 (
+    date_time   IN TIMESTAMP,
+    time_offset IN INTERVAL DAY TO SECOND
+) IS
+BEGIN
+    IF date_time IS NOT NULL THEN --все записи на конкретную дату и время 
+        FOR action_info IN (SELECT * FROM log_students WHERE TRUNC(datetime, 'MI') = TRUNC(date_time, 'MI')) --TRUNC для обрезания миллисекунд и других меньших единиц времени
+        LOOP
+            IF action_info.ACTION = 'DELETE' THEN
+                INSERT INTO STUDENTS (ID, NAME, GROUP_ID) VALUES (action_info.STUDENT_ID, action_info.NAME, action_info.GROUP_ID);
+            ELSIF action_info.ACTION = 'INSERT' THEN
+                DELETE FROM STUDENTS WHERE ID = action_info.STUDENT_ID;
+            ELSIF action_info.ACTION = 'UPDATE' THEN
+                UPDATE STUDENTS SET NAME = action_info.NAME, GROUP_ID = action_info.GROUP_ID WHERE ID = action_info.STUDENT_ID;
+            END IF;
+        END LOOP;
+    ELSIF time_offset IS NOT NULL THEN --все записи в рамках этого смещения времени
+        FOR action_info IN (SELECT * FROM log_students WHERE datetime >= systimestamp - time_offset)
+        LOOP
+            IF action_info.ACTION = 'DELETE' THEN
+                INSERT INTO STUDENTS (ID, NAME, GROUP_ID) VALUES (action_info.STUDENT_ID, action_info.NAME, action_info.GROUP_ID);
+            ELSIF action_info.ACTION = 'INSERT' THEN
+                DELETE FROM STUDENTS WHERE ID = action_info.STUDENT_ID;
+            ELSIF action_info.ACTION = 'UPDATE' THEN
+                UPDATE STUDENTS SET NAME = action_info.NAME, GROUP_ID = action_info.GROUP_ID WHERE ID = action_info.STUDENT_ID;
+            END IF;
+        END LOOP;
+    END IF;
+END;
 
+execute dbms_output.put_line('----------- NEW-(date_time: 2024-02-11 13:08:24)----------------');
+execute restore_students_info(TO_TIMESTAMP('2024-02-11 13:08:24', 'YYYY-MM-DD HH24:MI:SS'), NULL);
 
+execute dbms_output.put_line('----------- NEW-(3 days)----------------');
+execute restore_students_info(NULL, INTERVAL '3' DAY);
+
+----------- NEW-(3 MINUTES)----------------
+select * from students;
+insert into students(name, group_id) values('st_insert_to_delete', 1);
+delete students where name = 'st_insert_to_delete';
+
+update students set name = 'st_update_2' where id = 1;
+select * from students;
+execute restore_students_info_v2(NULL, INTERVAL '1' MINUTE);
+
+--insert
+alter trigger CHECK_UNIQUE_STUDENT_ID disable;
+--insert into students(name, group_id) values('st_insert_2', 1);
+select * from students;
+execute restore_students_info_v2(NULL, INTERVAL '1' MINUTE);
+select * from students;
+alter trigger CHECK_UNIQUE_STUDENT_ID enable;
+
+--update
+alter trigger CHECK_UNIQUE_STUDENT_ID disable;
+--insert into students(name, group_id) values('st_to_update', 1);
+select * from students;
+update students set name = 'st_to_update_new' where name = 'st_to_update';
+select * from students;
+execute restore_students_info_v2(NULL, INTERVAL '1' MINUTE);
+select * from students;
+alter trigger CHECK_UNIQUE_STUDENT_ID enable;
+
+--delete
+alter trigger CHECK_UNIQUE_STUDENT_ID disable;
+--insert into students(name, group_id) values('st_insert_to_delete', 1);
+delete students where name = 'st_insert_to_delete';
+select * from students;
+execute restore_students_info_v2(NULL, INTERVAL '1' MINUTE);
+select * from students;
+alter trigger CHECK_UNIQUE_STUDENT_ID enable;
+
+select * from log_students;
+
+--task6
+CREATE OR REPLACE TRIGGER update_groups_c_val
+AFTER INSERT OR UPDATE OR DELETE ON students
+FOR EACH ROW
+DECLARE
+    student_count NUMBER;
+    v_group_id NUMBER;
+BEGIN
+    IF :OLD.GROUP_ID IS NULL OR :OLD.GROUP_ID != :NEW.GROUP_ID THEN 
+    IF INSERTING THEN
+        UPDATE GROUPS SET C_VAL = C_VAL + 1 WHERE id = :new.group_id;
+    END IF;
+    IF UPDATING THEN
+        UPDATE GROUPS SET C_VAL = C_VAL - 1 WHERE id = :old.group_id;
+        UPDATE GROUPS SET C_VAL = C_VAL + 1 WHERE id = :new.group_id;
+    END IF;
+    IF DELETING THEN
+        UPDATE GROUPS SET C_VAL = C_VAL - 1 WHERE id = :old.group_id;
+    END IF;
+    END IF;
+END;
+
+delete groups where name = 'group_test6';
+
+alter trigger update_groups_c_val enable
+insert into groups(name, c_val) values('group_test6', 0);
+select * from groups;
+alter trigger CHECK_UNIQUE_GROUP_NAME disable;
+alter trigger CHECK_UNIQUE_GROUP_ID disable;
+insert into students(name, group_id) values('st_test6_1', (select id from groups where name = 'group_test6'));
+insert into students(name, group_id) values('st_test6_2', (select id from groups where name = 'group_test6'));
+alter trigger CHECK_UNIQUE_GROUP_NAME enable;
+alter trigger CHECK_UNIQUE_GROUP_ID enable;
+alter trigger update_groups_c_val disable;
